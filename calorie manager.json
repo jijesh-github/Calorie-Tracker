@@ -1,0 +1,212 @@
+{
+  "name": "calorie manager",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "analytics",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "62e3ff38-d92d-464c-be69-71c5141346eb",
+      "name": "Webhook",
+      "webhookId": "d0d2b000-dfa0-42dc-90e3-4e6b4710c036"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  id as daily_log_id,\n  log_date,\n  morning_weight_kg\nfrom daily_logs\nwhere user_id = '8fa91239-dc4b-47cb-8ef2-a8c2a9422bea'\norder by log_date asc;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        160,
+        0
+      ],
+      "id": "d991ce95-15be-473f-97ec-beca88f66e33",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  mi.daily_log_id,\n  dl.log_date,\n  mi.meal_type,\n  mi.food_name,\n  mi.grams,\n  mi.calories,\n  mi.protein_g,\n  mi.carbs_g,\n  mi.fat_g\nfrom meal_items mi\njoin daily_logs dl\n  on dl.id = mi.daily_log_id\nwhere dl.user_id = '8fa91239-dc4b-47cb-8ef2-a8c2a9422bea'\norder by dl.log_date asc;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        368,
+        0
+      ],
+      "id": "12cf59bf-e204-4051-b65d-badd05d16432",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  dl.log_date,\n  sum(mi.calories) as total_calories,\n  sum(mi.protein_g) as total_protein,\n  sum(mi.carbs_g) as total_carbs,\n  sum(mi.fat_g) as total_fat\nfrom meal_items mi\njoin daily_logs dl\n  on dl.id = mi.daily_log_id\nwhere dl.user_id = '8fa91239-dc4b-47cb-8ef2-a8c2a9422bea'\ngroup by dl.log_date\norder by dl.log_date asc;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        576,
+        0
+      ],
+      "id": "c3f157c6-1157-46b8-b8dd-b903fcfb2847",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const dailyLogs = $items(\"Execute a SQL query\").map(i => i.json);\nconst meals = $items(\"Execute a SQL query1\").map(i => i.json);\nconst dailyTotals = $items(\"Execute a SQL query2\").map(i => i.json);\n\n// ---- Daily log map ----\nconst logMap = {};\ndailyLogs.forEach(d => {\n  logMap[d.daily_log_id] = {\n    date: d.log_date,\n    weight: d.morning_weight_kg,\n    meals: [],\n    totals: {\n      calories: 0,\n      protein: 0,\n      carbs: 0,\n      fat: 0,\n    },\n  };\n});\n\n// ---- Attach meals ----\nmeals.forEach(m => {\n  const log = logMap[m.daily_log_id];\n  if (!log) return;\n\n  log.meals.push({\n    meal_type: m.meal_type,\n    food_name: m.food_name,\n    grams: m.grams,\n    calories: m.calories,\n    protein: m.protein_g,\n    carbs: m.carbs_g,\n    fat: m.fat_g,\n  });\n\n  log.totals.calories += m.calories;\n  log.totals.protein += m.protein_g;\n  log.totals.carbs += m.carbs_g;\n  log.totals.fat += m.fat_g;\n});\n\n// ---- Chart-ready arrays ----\nconst chartCalories = dailyTotals.map(d => ({\n  date: d.log_date,\n  calories: d.total_calories,\n}));\n\nconst chartMacros = dailyTotals.map(d => ({\n  date: d.log_date,\n  protein: d.total_protein,\n  carbs: d.total_carbs,\n  fat: d.total_fat,\n}));\n\nreturn [\n  {\n    json: {\n      status: \"ok\",\n      charts: {\n        calories_over_time: chartCalories,\n        macros_over_time: chartMacros,\n      },\n      daily_logs: Object.values(logMap),\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        0
+      ],
+      "id": "238e0b99-961c-44ef-b56a-5dda20572b25",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        992,
+        0
+      ],
+      "id": "75089d69-05f2-452b-8dd2-f66ff8d33adf",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "70950ad8-7455-499c-91a2-e409acab269c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f22362bcfc784e943ec2d2654415e5fe37b8e9ebaec65d2c7a4613197fa8cd6"
+  },
+  "id": "k7SCFmoV5HX84f6E",
+  "tags": []
+}

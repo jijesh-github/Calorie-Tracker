@@ -1,0 +1,409 @@
+{
+  "name": "calorie",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/api/log-meal",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "a0732b45-a982-43d0-a7af-4446a3446883",
+      "name": "Webhook",
+      "webhookId": "1349da2b-0151-497b-ad6e-fbe71778409e"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.calorieninjas.com/v1/nutrition?query={{ $json.body.inputText }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "y1kKxEgcBvltrOKuXFEi2Q==JmnVINN8LKwQ65qm"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ],
+      "id": "d6e6ebb4-5920-4eb4-a7c3-87a155ce6072",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=api response : {{ JSON.stringify($json) }}\nuser input : {{ $('Webhook').item.json.body.inputText }}\n",
+        "options": {
+          "systemMessage": "You are a precise nutrition calculator.\n\nYour job has TWO responsibilities:\n1) Extract the correct grams for ONE specific food from a free-text user input.\n2) Scale nutrition values from an API response using those grams.\n\n-----------------------\nINPUT FORMAT\n-----------------------\n\nYou will receive a JSON object with:\n\n1) api_response  \nNutrition data for EXACTLY ONE food item.\n\napi_response may be:\n- a single food object\n- OR an array with one food object (use the first element)\n\nFood object format:\n\n{\n  \"name\": \"<food_name>\",\n  \"calories\": <number>,\n  \"serving_size_g\": <number>,\n  \"fat_total_g\": <number>,\n  \"fat_saturated_g\": <number>,\n  \"protein_g\": <number>,\n  \"sodium_mg\": <number>,\n  \"potassium_mg\": <number>,\n  \"cholesterol_mg\": <number>,\n  \"carbohydrates_total_g\": <number>,\n  \"fiber_g\": <number>,\n  \"sugar_g\": <number>\n}\n\n2) user_input  \nFree-text describing food quantities, examples:\n\n\"500gms of dosa\"\n\"500 grams dosa\"\n\"dosa 500g\"\n\"500 grams\"\n\"200 g\"\n\n-----------------------\nWHAT YOU MUST DO\n-----------------------\n\nSTEP 1: Normalize api_response  \n- If api_response is an array → use the first element.\n- Let food_name = api_response.name.\n\nSTEP 2: Extract grams from user_input  \n\nYou MUST follow these rules IN ORDER:\n\nA) First, try to extract grams that are explicitly associated with food_name  \n(case-insensitive match).\n\nValid patterns include:\n- \"500gms of dosa\"\n- \"500 grams dosa\"\n- \"dosa 500 g\"\n- \"dosa - 500g\"\n\nB) If food_name is NOT explicitly mentioned:\n- Check if user_input contains EXACTLY ONE numeric gram value\n- Accept units: g, gm, gms, gram, grams\n- If ONLY ONE gram value exists → ASSUME it belongs to food_name\n\nC) If multiple gram values exist and food_name is not clearly associated → ERROR\n\nSTEP 3: Calculate nutrition  \n\n- api_amount = serving_size_g\n- user_amount = extracted grams\n- scale_factor = user_amount / api_amount\n\nMultiply ALL numeric nutrient fields by scale_factor.\n\nRound all results to 2 decimal places.\n\n-----------------------\nOUTPUT FORMAT (STRICT)\n-----------------------\n\nReturn ONLY valid JSON in this exact structure:\n\n{\n  \"status\": \"ok\",\n  \"food_name\": \"<string>\",\n  \"api_serving_g\": <number>,\n  \"user_serving_g\": <number>,\n  \"scale_factor\": <number>,\n  \"per_user_serving\": {\n    \"calories\": <number>,\n    \"fat_total_g\": <number>,\n    \"fat_saturated_g\": <number>,\n    \"protein_g\": <number>,\n    \"sodium_mg\": <number>,\n    \"potassium_mg\": <number>,\n    \"cholesterol_mg\": <number>,\n    \"carbohydrates_total_g\": <number>,\n    \"fiber_g\": <number>,\n    \"sugar_g\": <number>\n  }\n}\n\n-----------------------\nERROR HANDLING\n-----------------------\n\nReturn EXACTLY this if:\n- api_response is missing\n- serving_size_g is missing or zero\n- grams cannot be confidently extracted\n\n{\n  \"status\": \"error\",\n  \"message\": \"Unable to extract grams for this food from user input\"\n}\n\n-----------------------\nRULES\n-----------------------\n\n- Extract grams ONLY for the current food.\n- Use the single-quantity fallback ONLY if exactly one gram value exists.\n- Never guess when multiple quantities are present.\n- Do NOT invent nutrients.\n- Do NOT return explanations or markdown.\n- Output ONLY the JSON object.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        32
+      ],
+      "id": "52255220-a136-4efa-80e5-a90f1fee2191",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2da3f776-a4c1-4e5e-983f-474a1a41933b",
+              "leftValue": "={{ $('Webhook').item.json.body.mealType }}",
+              "rightValue": "morning",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        0
+      ],
+      "id": "b23d0287-d770-4fb9-991b-45f01f77fbdf",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: multiple items from AI Agent\n// Each item has { output: \"```json ... ```\" }\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const raw = item.json.output;\n\n  if (!raw || typeof raw !== \"string\") {\n    throw new Error(\"Missing or invalid AI output\");\n  }\n\n  // Remove markdown fencing\n  const cleaned = raw\n    .replace(/```json/g, \"\")\n    .replace(/```/g, \"\")\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleaned);\n  } catch (err) {\n    throw new Error(\n      \"JSON parsing failed: \" +\n        err.message +\n        \"\\nCleaned data:\\n\" +\n        cleaned\n    );\n  }\n\n  // Push parsed JSON as its own item\n  results.push({ json: parsed });\n}\n\n// Return one item per food\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        -96
+      ],
+      "id": "084902f5-4eb6-480c-94f6-269ce6268926",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into daily_logs (user_id, log_date, morning_weight_kg)\nvalues ('8fa91239-dc4b-47cb-8ef2-a8c2a9422bea', '{{ $('Webhook').item.json.body.date }})',{{ $('Webhook').item.json.body.weight }} )\non conflict (user_id, log_date)\ndo update set\n  morning_weight_kg = excluded.morning_weight_kg,\n  updated_at = now()\nreturning id;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1488,
+        -96
+      ],
+      "id": "fc8b5faf-3eed-47dd-8290-9319d1425a2c",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into daily_logs (user_id, log_date)\nvalues ('8fa91239-dc4b-47cb-8ef2-a8c2a9422bea', '{{ $('Webhook').item.json.body.date }}'::DATE)\non conflict (user_id, log_date)\ndo update set\n  updated_at = now()\nreturning id;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1488,
+        96
+      ],
+      "id": "e2eaabcd-c64f-4a67-a8be-0d0a72636eb2",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1728,
+        0
+      ],
+      "id": "18b9fb79-c3b9-4fda-b3b2-e5361d2a57f7",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into meal_items\n  (daily_log_id,\n   meal_type,\n   raw_input,\n   food_name,\n   grams,\n   calories,\n   protein_g,\n   carbs_g,\n   fat_g,\n   source_json)\nvalues\n  (\n    -- daily_log_id from the Merge node\n    '{{ $json.id }}',\n\n    -- mealType from Webhook body\n    '{{$(\"Webhook\").item.json.body.mealType}}',\n\n    -- the original text the user sent\n    '{{$(\"Webhook\").item.json.body.inputText}}',\n\n    -- food name from JS node\n    '{{$(\"Code in JavaScript\").item.json.food_name}}',\n\n    -- grams from JS node (user_serving_g)\n    {{ $(\"Code in JavaScript\").item.json.user_serving_g }},\n\n    -- nutrition values from JS node\n    {{ $(\"Code in JavaScript\").item.json.per_user_serving.calories }},\n    {{ $(\"Code in JavaScript\").item.json.per_user_serving.protein_g }},\n    {{ $(\"Code in JavaScript\").item.json.per_user_serving.carbohydrates_total_g }},\n    {{ $(\"Code in JavaScript\").item.json.per_user_serving.fat_total_g }},\n\n    -- full AI output as JSONB (optional, for debugging)\n    '{{JSON.stringify($json)}}'::jsonb\n  );\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1936,
+        0
+      ],
+      "id": "febf745a-65dc-49ee-a6b3-7b3ce0e55ff8",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "FncTG6bZtv06L9F5",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "xiaomi/mimo-v2-flash:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        576,
+        240
+      ],
+      "id": "5276dff4-d759-4783-825e-9ed1e4a85c43",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "CNNfrJqGik3d9XO0",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        496,
+        0
+      ],
+      "id": "8d2df4ea-c4e6-45d5-9d84-15e9101226c4",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        288,
+        0
+      ],
+      "id": "d0d60c32-3245-4ced-8544-e006910452b2",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Code in JavaScript').all() }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2160,
+        0
+      ],
+      "id": "d055affc-f876-4847-8d4f-fa2f134df3a1",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "963d8e72-d1f1-4898-a846-0a606641e9c8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f22362bcfc784e943ec2d2654415e5fe37b8e9ebaec65d2c7a4613197fa8cd6"
+  },
+  "id": "7SBTNJMtTkEOz6Ua",
+  "tags": []
+}
